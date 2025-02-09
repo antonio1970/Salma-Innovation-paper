@@ -1,0 +1,218 @@
+---
+title: "Results-Cluster"
+author: "ara"
+date: "2024-03-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, fig.path="figures/")
+```
+
+```{r}
+## load libraries
+library(tidyverse)
+library(factoextra)
+library(clustMixType)
+
+```
+
+```{r}
+## Read the file
+data_merged <- read.csv("../project/data_merged_new.csv")
+data_merged$X = NULL
+rownames(data_merged) = make.names(data_merged$Country, unique = TRUE)
+```
+
+```{r}
+# Remove internal DM structure and inspection of the variables
+data_merged = data_merged[, -14]
+skimr::skim(data_merged)
+```
+
+
+```{r}
+### Missing values
+sum(is.na(data_merged)) #18 missing values
+colSums(is.na(data_merged))  # 18 missing values
+```
+
+
+```{r}
+## Identify character variables to transform as factors
+char_cols <- sapply(data_merged, is.character)
+char_cols  # 10 character variables
+data_fac <-data_merged
+```
+
+```{r}
+# Character variables to factors (10 character variables)
+
+data_fac$Mean.Employment.Tenure <- as.factor(data_fac$Mean.Employment.Tenure)
+data_fac$Main.Method.of.Skill.acquisition = as.factor(data_fac$Main.Method.of.Skill.acquisition) 
+data_fac$Union.Type = as.factor(data_fac$Union.Type)
+data_fac$Main.source.of.Funding = as.factor(data_fac$Main.source.of.Funding)
+data_fac$Fund.Allocation.Criteria = as.factor(data_fac$Fund.Allocation.Criteria)
+data_fac$Main.Criteria.for.pay.raise...promotion = as.factor(data_fac$Main.Criteria.for.pay.raise...promotion)
+data_fac$Main.ownership.of.large.firms = as.factor(data_fac$Main.ownership.of.large.firms)
+data_fac$main.controlling.owner = as.factor(data_fac$main.controlling.owner)
+data_fac$Type = as.factor(data_fac$Type)
+data_fac$state.decision.making = as.factor(data_fac$state.decision.making)
+
+```
+
+```{r}
+## describe the dataframe again to check factor variables
+skimr::skim(data_fac)  # More complete description of the variables
+```
+
+```{r}
+## Replace by zeros NAs in numerical variables
+
+library(dplyr)
+data_fac1 <- data_fac %>%
+  mutate(rule.of.law1 = if_else(is.na(rule.of.law), 0, rule.of.law ))  
+
+data_fac1 = data_fac %>% 
+  mutate(Confidence.in.labor.unions1 = ifelse(is.na(Confidence.in.labor.unions), 0, Confidence.in.labor.unions))
+
+
+data_fac1 = data_fac %>% 
+  mutate(Interfirm.Relations1 = ifelse(is.na(Interfirm.Relations), which.max(Interfirm.Relations), Interfirm.Relations))
+
+
+## Remove original variables
+
+data_fac1$Confidence.in.labor.unions <- NULL
+data_fac1$rule.of.law <-NULL
+data_fac1$Interfirm.Relations <- NULL
+
+summary(data_fac1)
+anyNA(data_fac1)
+```
+
+```{r}
+str(data_fac1)
+```
+
+
+```{r}
+#calculate optimal number of cluster: clusterpartition with #Silhouette-index
+val <- validation_kproto(method = "silhouette", data = data_fac1[, 3:58], k = 3:4, nstart = 5)
+val
+```
+
+
+
+```{r}
+##################################
+set.seed(1234)
+###################################
+kp <- kproto(data_fac1[,3:58], k = 4, diss = "gower")
+print(kp)
+class(kp)
+lambdaest(data_fac1[, 3:58])
+summary(kp) # get summary of the cluster results
+cluster.assignments = kp$cluster
+cluster.assignments
+```
+```{r}
+kp$centers
+```
+
+```{r}
+kp$size
+```
+
+
+
+```{r}
+result <-data.frame(kp$size, kp$centers)
+result
+```
+```{r}
+kp$withinss
+```
+
+
+```{r}
+clprofiles(kp, data_fac1[,3:58], vars = NULL, col = NULL)
+
+```
+
+```{r fig.path = "figures/"}
+library(cluster)
+
+# Only select continuous variables as we have 46 observations and 59 features.
+clusplot(data_fac1[, 3:45], cluster.assignments, main = 'Representation of the Cluster solution', color=TRUE, shade=TRUE, labels=3, lines=0)  ## Problem we have more variables than data points. 2 PC
+```
+
+
+
+```{r}
+cluster_label = cluster.assignments
+data_fac2 <- data_fac1 %>% 
+  select(where(is.numeric))
+
+data_fac2 <-data_fac2[, -c(1, 48)]
+clusplot(data_fac2, cluster.assignments, color=TRUE, shade=TRUE, labels=2, lines=0)
+```
+
+
+
+```{r}
+### country and cluster assignment
+## merge 4
+data_fac1$cluster <-kp$cluster
+```
+
+
+```{r}
+### Save results
+
+write.csv(data_fac1, file ="merged1.csv")
+
+```
+
+```{r}
+#calculate optimal number of cluster, index values and #clusterpartition with Silhouette-index
+val <- validation_kproto(method = "silhouette", data = data_fac1[, 3:58], k = 3:4, nstart = 5) # diSimilarity of object i to the same cluster and other clusters
+val
+```
+
+```{r}
+val1 <- validation_kproto(method = "dunn", data = data_fac1[, 3:58], k = 3:4, nstart = 5)
+val1
+```
+
+
+```{r}
+df1 = data.frame(kp[["centers"]][c("Individualism", "Investor.Protection")])
+df2 = data.frame(kp[["data"]][c("Individualism", "Investor.Protection")])
+df3 <-qpcR:::cbind.na(df1, df2, kp$cluster)
+colnames(df3) = c('m_indiv','m_investor','d_individualism', 'd_investor','cluster')
+```
+
+```{r}
+cluster_data <- split(data_fac1[,3:58], cluster.assignments)
+```
+
+```{r}
+# Calcular la desviación estándar para cada cluster
+cluster_sd <- lapply(cluster_data, function(cluster_subset) {
+  sapply(cluster_subset[sapply(cluster_subset, is.numeric)], sd)
+})
+```
+
+```{r}
+# Convertir los resultados a un data frame
+cluster_sd_df <- as.data.frame(do.call(rbind, cluster_sd))
+```
+
+```{r}
+write.csv(cluster_sd_df, file= "sd-cluster.csv")
+```
+
+
+
